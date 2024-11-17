@@ -34,7 +34,7 @@ from torch.distributions import Bernoulli as TorchBernoulli
 from gluonts.torch.distributions import DistributionOutput
 from typing import Dict, Optional, Tuple
 #this Bernouli binary distribution which is used for feeding to model 
-#the model need to have distribution for porbability forcasting. orginally the Gluonts does not have Beroulli distribution and I creat it by myself
+#the model need to have distribution for probability forecasting. originally the Gluonts does not have Bernoulli distribution and I created it by myself
 class BernoulliOutput(DistributionOutput):
     args_dim: Dict[str, int] = {"probs": 1}  # Bernoulli only requires the probability of success
     distr_cls: type = TorchBernoulli
@@ -58,8 +58,8 @@ class BernoulliOutput(DistributionOutput):
         distribution = self.distribution(distr_args, loc=loc, scale=scale)
         nll = -distribution.log_prob(target)  # Negative log-likelihood
         return nll
-#%%I tried to use and scalled version of Bernouli distribution not help to improve prediction to highier values
-# I had a probalm that the higihest probalbility was around 50% not solving with this approch
+#%%I tried to use a scaled version of Bernoulli distribution not help to improve prediction to higher values
+# I had a problem that the higihest probability was around 50% not solving with this approach
 
 class ScaledBernoulliOutput(DistributionOutput):
     args_dim: Dict[str, int] = {"probs": 1}  # Bernoulli only requires the probability of success
@@ -113,7 +113,7 @@ data=data_orig[data_orig['year']<data_orig['year'].max()].copy()
 age=data['INSTALLED_YEAR']-data['year']
 age[age<0]=0
 data['age']=age 
-#Make number of pipe a multiple of batchsize =128
+#Make the number of pipes a multiple of batch-size =128
 #data=data[data['PIPE_ID']<100000].copy()
 aa=data['PIPE_ID'].unique()
 #data=data[data['PIPE_ID'].isin(aa[:((len(aa)//1280)*1280)])].copy()
@@ -127,26 +127,18 @@ normalizing_features=[ 'INSTALLED_YEAR', 'DIAM', 'LENGTH','BREAKS','X', 'Y', 'TS
           'std_tmp' ,'HDD','CDD', 'precipitation', 'rain', 'snow','age']
 data['year']=data['year'].apply(lambda x: pd.to_datetime(str(x), format='%Y'))
 
-#%%standardize input data (not used)
-"""
-standradization not improve the output. 
-"""
-from sklearn.preprocessing import StandardScaler
 
-scaler = StandardScaler()
-data_scaled = data.copy()
-data_scaled[normalizing_features] = scaler.fit_transform(data[normalizing_features])
 #%%# minmax normalization
 #data["time_idx"] = data["year"]
 #data["time_idx"] -= data["time_idx"].min()
-#add a field as targe shows if ther is more than zero break in year
+#add a field as Targe shows if there is more than zero break in year
 data_normal=data.copy()
 data_normal[normalizing_features] = (data[normalizing_features] - data[normalizing_features].min()) / (data[normalizing_features].max() - data[normalizing_features].min())
 
 
-#%%resampling for reducing inbalancing
-#resample for group of pipes with 0, 1, 2 or 3, and more than 3 break in their life time and resample from each pipe groups with
-# a fixed number of pipes. the bigest group would be used as base for sampling fom othe groups (over sampling)
+#%%resampling for reducing imbalance
+#resample for a group of pipes with 0, 1, 2 or 3, and more than 3 break in their lifetime and resample from each pipe group with
+# a fixed number of pipes. the biggest group would be used as a base for sampling from other groups (over-sampling)
 # Group by 'PIPE_ID' and sum the 'break' column
 
 data=data_normal
@@ -180,7 +172,7 @@ for group in group_labels:
 # Create a DataFrame with the sampled PIPE_IDs
 sampled_pipes_df = pd.DataFrame(sampled_pipes, columns=['PIPE_ID'])
 sampled_pipes_df['new_ID']=sampled_pipes_df.index.values
-# Merge to get the balanced dataset
+# Merge to get a balanced dataset
 balanced_data = pd.merge(data, sampled_pipes_df, on='PIPE_ID')
 
 # Verify the distribution
@@ -193,16 +185,16 @@ first_years = data[data['age'] == 0].groupby('PIPE_ID')['year'].min().reset_inde
 balanced_data_copy=balanced_data.copy()
 #first year of data available for each pipe
 #%%
-outf=open("output.txt","w")
-for predicting_year in range(2019,2024,1):
+outf=open("output2020_2023.txt","w")
+for predicting_year in range(2020,2024,1):
     data=balanced_data
-    #the prediction will be for the last year which is 2023
-    #but we can filter data to be untill 2022,2021,2020, to have prediction for 2022,2021,2020 base on historical data
-    #here we filter the data for trainig diffrent model and have predited year as:
+    #the prediction will be for the last year, which is 2023
+    #but we can filter data to be until 2022,2021,2020, to have prediction for 2022,2021,2020 base on historical data
+    #here, we filter the data for training different models and have predicted the year as:
     #predicting_year=2019 # change if we need to predict other years
     data=data[data['year'].dt.year<=predicting_year].copy()
         #data=filtered_data
-    #%%this part create an under sampling and delete the record before installation of each pipe not used
+    #%% This part creates an under-sampling and deletes the record before installation of each pipe not used
     """# Resampling for reducing imbalance via undersampling
     #data = data_normal
     
@@ -332,8 +324,59 @@ for predicting_year in range(2019,2024,1):
     F=data.pivot(index='PIPE_ID', columns='year', values='F').values
     G=data.pivot(index='PIPE_ID', columns='year', values='G').values
     S=data.pivot(index='PIPE_ID', columns='year', values='S').values
-    
     train_ds = ListDataset(
+    [
+        {
+            FieldName.ITEM_ID: item_id,
+            FieldName.TARGET: target,
+            FieldName.START: start,#start_year,###############################################
+#            FieldName.FEAT_DYNAMIC_REAL: ,
+            FieldName.PAST_FEAT_DYNAMIC_REAL :[avg_temp,std_tmp,HDD,CDD, 
+                                               precipitation, rain, snow,BREAKS,TSLF],
+            FieldName.PAST_FEAT_DYNAMIC_CAT :[ZONE,A,B,C,D,E,F,G,S],
+            FieldName.FEAT_STATIC_CAT: [MATERIAL,TYPE],
+            FieldName.FEAT_STATIC_REAL: [INSTALLED_YEAR, DIAM, LENGTH,X, Y],
+            
+        }
+        for (item_id,target, start, avg_temp,std_tmp,HDD,CDD, 
+             precipitation, rain, snow,BREAKS,TSLF,
+             ZONE,A,B,C,D,E,F,G,S,
+             MATERIAL,TYPE,
+             INSTALLED_YEAR, DIAM, LENGTH,X, Y) in zip(
+            item_id,
+            target[:, : -custom_ds_metadata["prediction_length"]*2],
+            custom_ds_metadata["start"],
+            avg_temp[:, : -custom_ds_metadata["prediction_length"]*2],
+            std_tmp[:, : -custom_ds_metadata["prediction_length"]*2],
+            HDD[:, : -custom_ds_metadata["prediction_length"]*2],
+            CDD[:, : -custom_ds_metadata["prediction_length"]*2],
+            precipitation[:, : -custom_ds_metadata["prediction_length"]*2],
+            rain[:, : -custom_ds_metadata["prediction_length"]*2],
+            snow[:, : -custom_ds_metadata["prediction_length"]*2],
+            BREAKS[:, : -custom_ds_metadata["prediction_length"]*2],
+            TSLF[:, : -custom_ds_metadata["prediction_length"]*2],
+            
+            ZONE[:, : -custom_ds_metadata["prediction_length"]*2],
+            A[:, : -custom_ds_metadata["prediction_length"]*2],
+            B[:, : -custom_ds_metadata["prediction_length"]*2],
+            C[:, : -custom_ds_metadata["prediction_length"]*2],
+            D[:, : -custom_ds_metadata["prediction_length"]*2],
+            E[:, : -custom_ds_metadata["prediction_length"]*2],
+            F[:, : -custom_ds_metadata["prediction_length"]*2],
+            G[:, : -custom_ds_metadata["prediction_length"]*2],
+            S[:, : -custom_ds_metadata["prediction_length"]*2],
+            
+            MATERIAL,
+            TYPE,INSTALLED_YEAR, DIAM, LENGTH,X, Y
+            
+            
+            
+        )
+    ],
+    freq=custom_ds_metadata["freq"],
+)
+    
+    val_ds = ListDataset(
         [
             {
                 FieldName.ITEM_ID: item_id,
@@ -445,16 +488,20 @@ for predicting_year in range(2019,2024,1):
     from gluonts.torch.model.deepar import DeepAREstimator
     #from gluonts.mx.trainer.callback import TrainingHistory
     
-    from gluonts.evaluation.backtest import make_evaluation_predictions
+    #from gluonts.evaluation.backtest import make_evaluation_predictions
     #history = TrainingHistory()
-    
+    #by defaul Adam optimzer will use for optimazation
     estimator = DeepAREstimator(freq='Y',     prediction_length=custom_ds_metadata["prediction_length"],
                                 context_length= custom_ds_metadata["context_length"],
                                 num_layers=5, hidden_size =1024, lr =1e-5,
                                 dropout_rate=0.3,distr_output=BernoulliOutput(),
-                                 trainer_kwargs={'accelerator': 'auto', 'max_epochs':20})
-    #balanced data: 8,5,1024: 0.0013 after 24 epoch
-    predictor = estimator.train(train_ds, num_workers=2)
+                                 trainer_kwargs={'accelerator': 'auto', 'max_epochs':30})
+    # Train the estimator with validation data for hyperparamters optimization.
+    predictor = estimator.train(
+        training_data=train_ds,
+#        validation_data=val_ds,
+        num_workers=3
+    )
     #%%make an estimation evaluation according to documentation not used
     #prediction
     # Optionally, perform backtesting to evaluate the model
@@ -531,6 +578,7 @@ for predicting_year in range(2019,2024,1):
     """
     # Assuming y_true and y_prob are the actual binary outcomes and predicted probabilities
     brier_score = brier_score_loss(y_true, y_prob)
+    print(f"Year {predicting_year}\n--------------",file=outf)
     print("Brier score loss:",np.round(brier_score,4),file=outf)
     
     """
@@ -582,30 +630,35 @@ for predicting_year in range(2019,2024,1):
     #%%
     #print(np.sum((all_preds['p80']==1)==all_preds['actual'])/np.sum(all_preds['actual']))
     print("from:",np.sum(all_preds['actual']),"failure in:",predicting_year,np.sum(all_preds.loc[all_preds['actual']==1]['predict']<.01), "not predicted in p80",file=outf)
-    print("from:",np.sum(all_preds['actual']==0),"no failure in:",predicting_year,np.sum(all_preds.loc[all_preds['actual']==0]['predict']>.5), "not predicted in p80",file=outf)
+    print("from:",np.sum(all_preds['actual']==0),"no failure in:",predicting_year,np.sum(all_preds.loc[all_preds['actual']==0]['predict']>.01), "not predicted in p80",file=outf)
     from sklearn.metrics import confusion_matrix
     all_preds=all_preds.sort_values('predict',ascending=False).reset_index()
     #percent of pipes nnulay breaks during the study period was 1.76% which is used to find top 
     #list of prioritze (the most probable ) pipe breaking in this year
-    priority=int(len(all_preds)*0.0176)
+    priority=250#int(len(all_preds)*0.0176)
     all_preds['scaled_pred']=0 
     all_preds.loc[:priority,'scaled_pred']=(all_preds.loc[:priority,'predict']>0).astype(int)
     cm = confusion_matrix(all_preds['actual'], all_preds['scaled_pred'])
     
     print("Confusion Matrix:",file=outf)
     print(cm,file=outf)
+    print(f"toal actual breaks in {predicting_year}: {all_preds['actual'].sum()}, in 250 firsts:{all_preds['actual'][:priority].sum()}",file=outf)
+    print(f"toal actual breaks in {predicting_year}: {all_preds['actual'].sum()}, in 280 firsts:{all_preds['actual'][:280].sum()}",file=outf)
+    print(f"toal actual breaks in {predicting_year}: {all_preds['actual'].sum()}, in 425 firsts:{all_preds['actual'][:425].sum()}",file=outf)
+    print(f"toal actual breaks in {predicting_year}: {all_preds['actual'].sum()}, in 570 firsts:{all_preds['actual'][:570].sum()}",file=outf)
+    print(f"toal actual breaks in {predicting_year}: {all_preds['actual'].sum()}, in 710 firsts:{all_preds['actual'][:710].sum()}",file=outf)
     
     from sklearn.metrics import ConfusionMatrixDisplay
     
-    # Display the confusion matrix based on 1.76% of the top pririty with highest probability of failure as failed 
-    #1.76% was average annula failure rate
+    # Display the confusion matrix based on 1.76% of the top priority with the highest probability of failure as failed 
+    #1.76% was the average annula failure rate
     disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=["Not Fail", "Fail"])
     
     disp.plot(cmap=plt.cm.Blues)
     plt.title('Confusion Matrix')
     plt.show()
-    all_preds.to_csv(f'prediction{predicting_year}.csv',index=False)
-    #%%transfer prediction from all_preds to original dataset for next runing
+    all_preds.to_csv(f'single_prediction{predicting_year}.csv',index=False)
+    #%%transfer prediction from all_preds to original dataset for next running
     # Step 1: Create a dictionary from all_preds with 'orig_PIPE_ID' as keys and 'scaled_pred' as values
     pred_dict = dict(zip(all_preds['orig_PIPE_ID'], all_preds['scaled_pred']))
     
@@ -615,7 +668,7 @@ for predicting_year in range(2019,2024,1):
     print("----------------",file=outf)
 outf.close()
 #data understanding
-#%%various dataset measures for report in paper
+#%%various dataset measures for the report in the paper
 #distribution of installed year
 installed_year=data_orig.groupby('PIPE_ID').last()['INSTALLED_YEAR'].describe()
 diam=data_orig.groupby('PIPE_ID').last()['DIAM'].describe()
